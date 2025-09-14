@@ -1,0 +1,65 @@
+name: SonarQube Analysis
+on:
+  pull_request:
+    branches: [ master, main, 'release-v*']
+    types: [opened, synchronize, reopened]
+
+jobs:
+  sonar:
+    name: SonarQube Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile TypeScript
+        run: |
+          npm run compile
+          echo "TypeScript compilation completed"
+
+      - name: Run linting
+        run: |
+          npm run lint || echo "Linting completed with warnings"
+        continue-on-error: true
+
+      - name: Run tests with coverage
+        run: |
+          npm test -- --coverage || echo "No tests configured yet"
+        continue-on-error: true
+
+      - name: Setup SonarQube Scanner
+        uses: warchant/setup-sonar-scanner@v7
+
+      - name: SonarQube Scan
+        run: |
+          sonar-scanner \
+            -Dsonar.host.url=https://sonarcloud.io \
+            -Dsonar.token=${{ secrets.SONAR_TOKEN }} \
+            -Dsonar.branch.name=${{ github.ref_name }} \
+            -Dsonar.projectKey=burgan-tech_csx-json-sync \
+            -Dsonar.organization=burgan-tech \
+            -Dsonar.projectName="CSX-JSON Sync Extension" \
+            -Dsonar.projectVersion=1.0.0 \
+            -Dsonar.sources=src \
+            -Dsonar.sourceEncoding=UTF-8 \
+            -Dsonar.exclusions="**/node_modules/**,**/out/**,**/coverage/**,**/dist/**,**/build/**,**/*.min.js,**/test/**,**/tests/**,**/*.vsix" \
+            -Dsonar.test.exclusions="**/node_modules/**,**/test/**,**/tests/**,**/*.test.js,**/*.spec.js,**/*.test.ts,**/*.spec.ts" \
+            -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info \
+            -Dsonar.testExecutionReportPaths=coverage/test-reporter.xml \
+            -Dsonar.coverage.exclusions="**/test/**,**/tests/**,**/*.test.js,**/*.spec.js,**/*.test.ts,**/*.spec.ts,**/coverage/**,**/out/**" \
+            -Dsonar.cpd.exclusions="**/test/**,**/tests/**,**/out/**" \
+            -Dsonar.javascript.file.suffixes=.js,.jsx \
+            -Dsonar.typescript.file.suffixes=.ts,.tsx
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
