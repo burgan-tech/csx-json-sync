@@ -58,9 +58,14 @@ project-root/
     │       │   └── logout.csx              ✅ Supported
     │       └── data/
     │           └── processing.csx          ✅ Supported
+    ├── Workflows/
+    │   ├── global-workflow.json
+    │   └── payments/                       ← Sub-directories supported
+    │       ├── scheduled-payments-workflow.json  ✅ Supported
+    │       └── src/
+    │           └── MainWorkflowDeactivatedRule.csx  ✅ Supported
     ├── Views/
     ├── Extensions/
-    ├── Workflows/
     └── Schemas/
 ```
 
