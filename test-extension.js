@@ -164,11 +164,36 @@ if (structureResult && structureResult.totalCSXFiles > 0) {
                 // CSX dosyalarını bul
                 const csxFiles = findCSXFilesRecursive(srcPath);
                 
+                // Her CSX dosyası için JSON dosyalarını kontrol et
                 csxFiles.forEach(csxFile => {
                     const csxFileName = path.basename(csxFile);
                     let foundMappings = 0;
                     
-                    jsonFiles.forEach(jsonFile => {
+                    // CSX dosyasının src klasörünün parent klasöründeki JSON dosyalarını da bul
+                    const csxSrcDir = path.dirname(csxFile);
+                    const csxParentDir = path.dirname(csxSrcDir);
+                    
+                    // Hem component root hem de CSX parent klasöründeki JSON dosyalarını kontrol et
+                    const allJsonFiles = [...jsonFiles];
+                    
+                    // CSX parent klasöründeki JSON dosyalarını ekle (eğer farklıysa)
+                    if (csxParentDir !== componentPath && fs.existsSync(csxParentDir)) {
+                        try {
+                            const parentJsonFiles = fs.readdirSync(csxParentDir)
+                                .filter(f => f.endsWith('.json'))
+                                .map(f => path.join(csxParentDir, f));
+                            
+                            parentJsonFiles.forEach(pf => {
+                                if (!allJsonFiles.includes(pf)) {
+                                    allJsonFiles.push(pf);
+                                }
+                            });
+                        } catch (error) {
+                            // Ignore errors
+                        }
+                    }
+                    
+                    allJsonFiles.forEach(jsonFile => {
                         try {
                             const jsonContent = fs.readFileSync(jsonFile, 'utf8');
                             const relativePath = path.relative(path.dirname(jsonFile), csxFile).replace(/\\/g, '/');
@@ -179,6 +204,7 @@ if (structureResult && structureResult.totalCSXFiles > 0) {
                                 totalMappings++;
                                 console.log(`   ✅ ${csxFileName} → ${path.basename(jsonFile)}`);
                                 console.log(`      Location: ${locationPattern}`);
+                                console.log(`      JSON Path: ${path.relative(workspaceRoot, jsonFile)}`);
                                 
                                 // Base64 code kontrolü
                                 const jsonData = JSON.parse(jsonContent);
@@ -192,6 +218,8 @@ if (structureResult && structureResult.totalCSXFiles > 0) {
                     
                     if (foundMappings === 0) {
                         console.log(`   ⚠️  ${csxFileName} - No JSON mappings found`);
+                        console.log(`      CSX Path: ${path.relative(workspaceRoot, csxFile)}`);
+                        console.log(`      Checked ${allJsonFiles.length} JSON files`);
                     }
                 });
             }
