@@ -31,6 +31,103 @@ interface ProjectStructure {
     allPaths: string[];
 }
 
+// Base64 decode fonksiyonu
+function decodeBase64(base64String: string): string | null {
+    try {
+        return Buffer.from(base64String, 'base64').toString('utf8');
+    } catch (error) {
+        return null;
+    }
+}
+
+// Base64 string olup olmadığını kontrol eden fonksiyon
+function isValidBase64(str: string): boolean {
+    try {
+        return Buffer.from(str, 'base64').toString('base64') === str;
+    } catch (error) {
+        return false;
+    }
+}
+
+// Hover Provider class'ı
+class Base64HoverProvider implements vscode.HoverProvider {
+    private outputChannel: vscode.OutputChannel;
+
+    constructor(outputChannel: vscode.OutputChannel) {
+        this.outputChannel = outputChannel;
+    }
+
+    provideHover(
+        document: vscode.TextDocument,
+        position: vscode.Position,
+        token: vscode.CancellationToken
+    ): vscode.ProviderResult<vscode.Hover> {
+        // Sadece JSON dosyaları için çalış
+        if (document.languageId !== 'json') {
+            return null;
+        }
+
+        try {
+            // JSON satırını al
+            const line = document.lineAt(position.line);
+            const lineText = line.text;
+
+            // "code" field'ını kontrol et
+            if (!lineText.includes('"code"')) {
+                return null;
+            }
+
+            // Base64 string'i bulmaya çalış
+            const codeMatch = lineText.match(/"code"\s*:\s*"([^"]+)"/);
+            if (!codeMatch) {
+                return null;
+            }
+
+            const base64Value = codeMatch[1];
+            
+            // Cursor'ın base64 string'in üzerinde olup olmadığını kontrol et
+            const base64StartIndex = lineText.indexOf(base64Value);
+            const base64EndIndex = base64StartIndex + base64Value.length;
+            
+            if (position.character < base64StartIndex || position.character > base64EndIndex) {
+                return null;
+            }
+
+            // Base64 olup olmadığını kontrol et
+            if (!isValidBase64(base64Value)) {
+                return null;
+            }
+
+            // Base64'ü decode et
+            const decodedContent = decodeBase64(base64Value);
+            if (!decodedContent) {
+                return null;
+            }
+
+            this.outputChannel.appendLine(`Base64 hover triggered for ${document.fileName}`);
+
+            // Hover markdown içeriği oluştur
+            const hoverContent = new vscode.MarkdownString();
+            hoverContent.appendMarkdown('**Decoded C# Code:**\n\n');
+            hoverContent.appendCodeblock(decodedContent, 'csharp');
+            
+            // İsteğe bağlı: Base64 string'in uzunluğunu göster
+            hoverContent.appendMarkdown(`\n---\n*Base64 length: ${base64Value.length} characters*`);
+
+            // Base64 string'in tamamını kapsayan range oluştur
+            const startPos = new vscode.Position(position.line, base64StartIndex);
+            const endPos = new vscode.Position(position.line, base64EndIndex);
+            const hoverRange = new vscode.Range(startPos, endPos);
+
+            return new vscode.Hover(hoverContent, hoverRange);
+
+        } catch (error) {
+            this.outputChannel.appendLine(`Error in hover provider: ${error}`);
+            return null;
+        }
+    }
+}
+
 export function activate(context: vscode.ExtensionContext) {
     const outputChannel = vscode.window.createOutputChannel('CSX-JSON Sync');
     let fileWatcher: vscode.FileSystemWatcher | undefined;
@@ -38,6 +135,12 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Extension aktif olduğunda mesaj göster
     outputChannel.appendLine('CSX-JSON Sync extension activated');
+    
+    // Base64 Hover Provider'ı register et
+    const hoverProvider = new Base64HoverProvider(outputChannel);
+    const hoverDisposable = vscode.languages.registerHoverProvider('json', hoverProvider);
+    context.subscriptions.push(hoverDisposable);
+    outputChannel.appendLine('Base64 hover provider registered for JSON files');
     
     // Auto-sync başlat
     startAutoSync();
