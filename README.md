@@ -12,6 +12,7 @@ A VSCode extension that automatically synchronizes changes in CSX files to JSON 
 - ✅ **Smart Mapping**: Automatically finds which CSX files are used in which JSON files
 - ✅ **Debounce Support**: Prevents unnecessary updates during rapid changes
 - ✅ **Manual Sync**: Manual synchronization available when needed
+- ✅ **Base64 Code Preview**: Hover over base64 encoded code in JSON files to see decoded C# code with syntax highlighting
 
 ## 📋 Requirements
 
@@ -58,16 +59,21 @@ project-root/
     │       │   └── logout.csx              ✅ Supported
     │       └── data/
     │           └── processing.csx          ✅ Supported
+    ├── Workflows/
+    │   ├── global-workflow.json
+    │   └── payments/                       ← Sub-directories supported
+    │       ├── scheduled-payments-workflow.json  ✅ Supported
+    │       └── src/
+    │           └── MainWorkflowDeactivatedRule.csx  ✅ Supported
     ├── Views/
     ├── Extensions/
-    ├── Workflows/
     └── Schemas/
 ```
 
 ## 📦 Installation
 
 ### VSIX Package (Recommended)
-1. Download `csx-json-sync-1.0.0.vsix` file
+1. Download `csx-json-sync.vsix` file
 2. In VS Code: `Ctrl+Shift+P` → "Extensions: Install from VSIX..."
 3. Select the VSIX file and install
 
@@ -101,6 +107,12 @@ When the extension is active, changes made to CSX files in `/src` subdirectories
 - **Enable Auto Sync**: `Ctrl+Shift+P` → "Enable Auto Sync"
 - **Disable Auto Sync**: `Ctrl+Shift+P` → "Disable Auto Sync"
 
+### Base64 Code Preview
+- **Hover Preview**: Hover over base64 encoded values in `"code"` fields in JSON files
+- **Syntax Highlighting**: Decoded C# code is displayed with proper syntax highlighting
+- **Quick Access**: No need to manually decode base64 strings to read the code
+- **File Support**: Works with all JSON files containing base64 encoded CSX code
+
 ## ⚙️ Configuration
 
 You can configure the following settings in VSCode Settings:
@@ -121,6 +133,7 @@ You can configure the following settings in VSCode Settings:
 5. **Base64 Conversion**: CSX file content is converted to base64 format
 6. **JSON Search**: Searches for references to this CSX file in JSON files in the same component directory
 7. **Update**: Updates `code` fields in JSON files where references are found
+8. **Hover Provider**: Provides instant preview of decoded C# code when hovering over base64 strings in JSON files
 
 ### JSON Mapping Format
 The extension works with the following format:
@@ -128,6 +141,21 @@ The extension works with the following format:
 {
   "location": "./src/auth/helpers/validation.csx",
   "code": "dXNpbmcgU3lzdGVtLlRocmVhZGluZy5UYXNrczsK..."
+}
+```
+
+### Base64 Hover Feature
+When you hover over the base64 string in the `"code"` field, the extension will:
+- Detect that your cursor is over a base64 encoded value
+- Automatically decode the base64 string to readable C# code
+- Display the decoded code in a popup with syntax highlighting
+- Show additional information like the base64 string length
+
+**Example:**
+```json
+{
+  "location": "./src/auth/login.csx",
+  "code": "dXNpbmcgU3lzdGVtOwo="  ← Hover here to see: using System;
 }
 ```
 
@@ -207,7 +235,7 @@ npx vsce package
 npx vsce package
 
 # Install package
-code --install-extension csx-json-sync-1.0.0.vsix
+code --install-extension csx-json-sync-1.1.0.vsix
 ```
 
 ## 🧪 Testing
@@ -227,6 +255,12 @@ The test script will:
 - ✅ Check extension files
 
 ## 📝 Release Notes
+
+### v1.1.0 (Latest)
+- ✅ **NEW**: Base64 Code Preview on Hover
+- ✅ **NEW**: Syntax highlighting for decoded C# code in hover popup
+- ✅ **NEW**: Base64 string validation and length display
+- ✅ Enhanced user experience for viewing encoded CSX code in JSON files
 
 ### v1.0.0
 - ✅ Dynamic project structure support (`vnext.config.json`)

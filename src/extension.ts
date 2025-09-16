@@ -31,6 +31,103 @@ interface ProjectStructure {
     allPaths: string[];
 }
 
+// Base64 decode fonksiyonu
+function decodeBase64(base64String: string): string | null {
+    try {
+        return Buffer.from(base64String, 'base64').toString('utf8');
+    } catch (error) {
+        return null;
+    }
+}
+
+// Base64 string olup olmadığını kontrol eden fonksiyon
+function isValidBase64(str: string): boolean {
+    try {
+        return Buffer.from(str, 'base64').toString('base64') === str;
+    } catch (error) {
+        return false;
+    }
+}
+
+// Hover Provider class'ı
+class Base64HoverProvider implements vscode.HoverProvider {
+    private outputChannel: vscode.OutputChannel;
+
+    constructor(outputChannel: vscode.OutputChannel) {
+        this.outputChannel = outputChannel;
+    }
+
+    provideHover(
+        document: vscode.TextDocument,
+        position: vscode.Position,
+        token: vscode.CancellationToken
+    ): vscode.ProviderResult<vscode.Hover> {
+        // Sadece JSON dosyaları için çalış
+        if (document.languageId !== 'json') {
+            return null;
+        }
+
+        try {
+            // JSON satırını al
+            const line = document.lineAt(position.line);
+            const lineText = line.text;
+
+            // "code" field'ını kontrol et
+            if (!lineText.includes('"code"')) {
+                return null;
+            }
+
+            // Base64 string'i bulmaya çalış
+            const codeMatch = lineText.match(/"code"\s*:\s*"([^"]+)"/);
+            if (!codeMatch) {
+                return null;
+            }
+
+            const base64Value = codeMatch[1];
+            
+            // Cursor'ın base64 string'in üzerinde olup olmadığını kontrol et
+            const base64StartIndex = lineText.indexOf(base64Value);
+            const base64EndIndex = base64StartIndex + base64Value.length;
+            
+            if (position.character < base64StartIndex || position.character > base64EndIndex) {
+                return null;
+            }
+
+            // Base64 olup olmadığını kontrol et
+            if (!isValidBase64(base64Value)) {
+                return null;
+            }
+
+            // Base64'ü decode et
+            const decodedContent = decodeBase64(base64Value);
+            if (!decodedContent) {
+                return null;
+            }
+
+            this.outputChannel.appendLine(`Base64 hover triggered for ${document.fileName}`);
+
+            // Hover markdown içeriği oluştur
+            const hoverContent = new vscode.MarkdownString();
+            hoverContent.appendMarkdown('**Decoded C# Code:**\n\n');
+            hoverContent.appendCodeblock(decodedContent, 'csharp');
+            
+            // İsteğe bağlı: Base64 string'in uzunluğunu göster
+            hoverContent.appendMarkdown(`\n---\n*Base64 length: ${base64Value.length} characters*`);
+
+            // Base64 string'in tamamını kapsayan range oluştur
+            const startPos = new vscode.Position(position.line, base64StartIndex);
+            const endPos = new vscode.Position(position.line, base64EndIndex);
+            const hoverRange = new vscode.Range(startPos, endPos);
+
+            return new vscode.Hover(hoverContent, hoverRange);
+
+        } catch (error) {
+            this.outputChannel.appendLine(`Error in hover provider: ${error}`);
+            return null;
+        }
+    }
+}
+
 export function activate(context: vscode.ExtensionContext) {
     const outputChannel = vscode.window.createOutputChannel('CSX-JSON Sync');
     let fileWatcher: vscode.FileSystemWatcher | undefined;
@@ -38,6 +135,12 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Extension aktif olduğunda mesaj göster
     outputChannel.appendLine('CSX-JSON Sync extension activated');
+    
+    // Base64 Hover Provider'ı register et
+    const hoverProvider = new Base64HoverProvider(outputChannel);
+    const hoverDisposable = vscode.languages.registerHoverProvider('json', hoverProvider);
+    context.subscriptions.push(hoverDisposable);
+    outputChannel.appendLine('Base64 hover provider registered for JSON files');
     
     // Auto-sync başlat
     startAutoSync();
@@ -128,6 +231,33 @@ export function activate(context: vscode.ExtensionContext) {
         };
     }
 
+    function findAllSrcDirectories(componentPath: string): string[] {
+        const srcDirectories: string[] = [];
+        
+        try {
+            const items = fs.readdirSync(componentPath, { withFileTypes: true });
+            
+            for (const item of items) {
+                if (item.isDirectory()) {
+                    const fullPath = path.join(componentPath, item.name);
+                    
+                    if (item.name === 'src') {
+                        // src klasörü bulundu
+                        srcDirectories.push(fullPath);
+                    } else {
+                        // Alt klasörlerde de src ara (recursive)
+                        const subSrcDirs = findAllSrcDirectories(fullPath);
+                        srcDirectories.push(...subSrcDirs);
+                    }
+                }
+            }
+        } catch (error) {
+            outputChannel.appendLine(`Error reading directory ${componentPath}: ${error}`);
+        }
+        
+        return srcDirectories;
+    }
+
     function findAllCSXFiles(): string[] {
         const structure = getProjectStructure();
         if (!structure) {
@@ -138,9 +268,10 @@ export function activate(context: vscode.ExtensionContext) {
 
         for (const componentPath of structure.allPaths) {
             try {
-                // Her klasörde /src altındaki .csx dosyalarını ara
-                const srcPath = path.join(componentPath, 'src');
-                if (fs.existsSync(srcPath)) {
+                // Her component klasöründe ve alt klasörlerinde /src dizinlerini bul
+                const srcDirectories = findAllSrcDirectories(componentPath);
+                
+                for (const srcPath of srcDirectories) {
                     const csxFiles = findCSXFilesRecursive(srcPath);
                     allCSXFiles.push(...csxFiles);
                 }
@@ -190,9 +321,18 @@ export function activate(context: vscode.ExtensionContext) {
         let componentDir: string | null = null;
         
         for (const componentPath of structure.allPaths) {
-            const srcPath = path.join(componentPath, 'src');
-            if (csxFilePath.startsWith(srcPath)) {
-                componentDir = componentPath;
+            // Bu component klasöründeki tüm src dizinlerini bul
+            const srcDirectories = findAllSrcDirectories(componentPath);
+            
+            // CSX dosyası bu src dizinlerinden birinde mi?
+            for (const srcPath of srcDirectories) {
+                if (csxFilePath.startsWith(srcPath)) {
+                    componentDir = componentPath;
+                    break;
+                }
+            }
+            
+            if (componentDir) {
                 break;
             }
         }
@@ -202,19 +342,59 @@ export function activate(context: vscode.ExtensionContext) {
             return [];
         }
 
-        // Aynı component klasöründeki JSON dosyalarını bul
+        // JSON dosyalarını bul - hem CSX ile aynı alt klasörde hem de component root'ta
         const jsonFiles: string[] = [];
         
+        // CSX dosyasının bulunduğu src klasörünün parent klasörünü bul
+        let csxParentDir: string | null = null;
+        
+        for (const componentPath of structure.allPaths) {
+            const srcDirectories = findAllSrcDirectories(componentPath);
+            
+            for (const srcPath of srcDirectories) {
+                if (csxFilePath.startsWith(srcPath)) {
+                    csxParentDir = path.dirname(srcPath); // src klasörünün parent'ı
+                    break;
+                }
+            }
+            
+            if (csxParentDir) break;
+        }
+        
+        // 1. CSX dosyası ile aynı alt klasördeki JSON dosyalarını bul
+        if (csxParentDir && csxParentDir !== componentDir) {
+            try {
+                const items = fs.readdirSync(csxParentDir, { withFileTypes: true });
+                
+                for (const item of items) {
+                    if (item.isFile() && item.name.endsWith('.json')) {
+                        jsonFiles.push(path.join(csxParentDir, item.name));
+                    }
+                }
+            } catch (error) {
+                outputChannel.appendLine(`Error reading CSX parent directory ${csxParentDir}: ${error}`);
+            }
+        }
+        
+        // 2. Component root klasöründeki JSON dosyalarını da bul
         try {
             const items = fs.readdirSync(componentDir, { withFileTypes: true });
             
             for (const item of items) {
                 if (item.isFile() && item.name.endsWith('.json')) {
-                    jsonFiles.push(path.join(componentDir, item.name));
+                    const jsonPath = path.join(componentDir, item.name);
+                    if (!jsonFiles.includes(jsonPath)) {
+                        jsonFiles.push(jsonPath);
+                    }
                 }
             }
         } catch (error) {
             outputChannel.appendLine(`Error reading component directory ${componentDir}: ${error}`);
+        }
+
+        if (workspaceRoot) {
+            outputChannel.appendLine(`Found ${jsonFiles.length} JSON files for CSX: ${path.relative(workspaceRoot, csxFilePath)}`);
+            jsonFiles.forEach(f => outputChannel.appendLine(`  - ${path.relative(workspaceRoot, f)}`));
         }
 
         return jsonFiles;
@@ -471,12 +651,14 @@ export function activate(context: vscode.ExtensionContext) {
             return;
         }
 
-        // Tüm component klasörlerindeki /src altlarını izle
+        // Tüm component klasörlerindeki /src altlarını izle (recursive olarak tüm alt klasörlerdeki src'leri dahil et)
         const watchPatterns: string[] = [];
         
         for (const componentPath of structure.allPaths) {
-            const srcPath = path.join(componentPath, 'src');
-            if (fs.existsSync(srcPath)) {
+            // Bu component klasöründeki tüm src dizinlerini bul
+            const srcDirectories = findAllSrcDirectories(componentPath);
+            
+            for (const srcPath of srcDirectories) {
                 const pattern = path.join(srcPath, '**/*.csx').replace(/\\/g, '/');
                 watchPatterns.push(pattern);
             }
