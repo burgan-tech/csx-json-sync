@@ -232,9 +232,9 @@ jobs:
         
         echo "🚀 Publishing extension to $REGISTRY_TARGET..."
         
-        # Function to publish to GitHub Packages
+        # Function to publish to GitHub Releases
         publish_to_github() {
-          echo "📦 Publishing VSIX to GitHub Packages..."
+          echo "📦 Preparing VSIX for GitHub Release..."
           
           if [ -z "$GITHUB_TOKEN" ]; then
             echo "❌ Error: GITHUB_TOKEN is not available"
@@ -246,25 +246,9 @@ jobs:
             return 1
           fi
           
-          # Upload VSIX to GitHub Packages as a generic package
-          VERSION="${{ steps.version.outputs.version }}"
-          PACKAGE_NAME=$(node -p "require('./package.json').name")
-          
-          echo "Uploading $VSIX_FILE to GitHub Packages..."
-          
-          # Use GitHub API to upload the package
-          curl -X POST \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary "@$VSIX_FILE" \
-            "https://uploads.github.com/repos/${{ github.repository }}/releases/assets?name=$VSIX_FILE" \
-            || echo "GitHub Packages upload method 1 failed, trying alternative..."
-          
-          # Alternative: Create a release and attach the VSIX
-          echo "Creating GitHub release with VSIX attachment..."
-          
-          # We'll handle this in the release creation step instead
-          echo "✅ VSIX prepared for GitHub release"
+          echo "✅ VSIX file ready for GitHub release"
+          echo "File: $VSIX_FILE"
+          echo "Size: $(stat -c%s "$VSIX_FILE" 2>/dev/null || stat -f%z "$VSIX_FILE" 2>/dev/null) bytes"
           return 0
         }
         
@@ -359,6 +343,7 @@ jobs:
     
     - name: Create GitHub Release
       if: steps.publish.outputs.published == 'true'
+      id: create_release
       uses: actions/create-release@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -377,13 +362,9 @@ jobs:
           4. Click on "..." menu and select "Install from VSIX..."
           5. Select the downloaded `.vsix` file
           
-          #### From VS Code Marketplace:
-          ```
-          ext install burgan-tech.csx-json-sync
-          ```
-          
           ### 🔧 Features
           - Automatically syncs CSX files to JSON files with base64 encoding
+          - Base64 code preview on hover in JSON files
           - Works with VNext workflow engine projects
           - Auto-sync on file changes with configurable debounce
           - Manual sync commands for individual or all CSX files
@@ -393,14 +374,15 @@ jobs:
           1. Open a VNext project with `vnext.config.json`
           2. The extension will automatically detect CSX files in your project structure
           3. Changes to CSX files will be automatically synced to corresponding JSON files
-          4. Use Command Palette (Ctrl+Shift+P) for manual sync commands
+          4. Hover over base64 code in JSON files to see decoded C# code
+          5. Use Command Palette (Ctrl+Shift+P) for manual sync commands
           
           ### 🔗 Links
           - [GitHub Repository](https://github.com/${{ github.repository }})
-          - [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=burgan-tech.csx-json-sync)
+          - [Documentation](https://github.com/${{ github.repository }}#readme)
           
           ### 📋 Changes
-          See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for detailed changes.
+          See [README.md](https://github.com/${{ github.repository }}/blob/main/README.md) for detailed features and changes.
           
           ---
           *This release was automatically created by GitHub Actions*
@@ -468,9 +450,9 @@ jobs:
           echo "4. Click \"...\" menu → \"Install from VSIX...\"" >> $GITHUB_STEP_SUMMARY
           echo "5. Select the downloaded VSIX file" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "#### From VS Code Marketplace" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "ext install burgan-tech.csx-json-sync" >> $GITHUB_STEP_SUMMARY
+          echo "#### From GitHub CLI" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "gh release download v${{ steps.version.outputs.version }} --repo ${{ github.repository }} --pattern '*.vsix'" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
         else
@@ -481,12 +463,12 @@ jobs:
         
         echo "### 🔗 Quick Links" >> $GITHUB_STEP_SUMMARY
         echo "- [GitHub Repository](https://github.com/${{ github.repository }})" >> $GITHUB_STEP_SUMMARY
-        echo "- [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=burgan-tech.csx-json-sync)" >> $GITHUB_STEP_SUMMARY
+        echo "- [GitHub Releases](https://github.com/${{ github.repository }}/releases)" >> $GITHUB_STEP_SUMMARY
         echo "- [Workflow Artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
         echo "- [Extension Documentation](https://github.com/${{ github.repository }}#readme)" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### 📋 Next Steps" >> $GITHUB_STEP_SUMMARY
         echo "1. Extension will be available for download from GitHub releases" >> $GITHUB_STEP_SUMMARY
-        echo "2. Install the extension using the VSIX file or from marketplace" >> $GITHUB_STEP_SUMMARY
+        echo "2. Install the extension using the VSIX file from GitHub releases" >> $GITHUB_STEP_SUMMARY
         echo "3. Open a VNext project with vnext.config.json to start using the extension" >> $GITHUB_STEP_SUMMARY
         echo "4. Configure auto-sync settings in VS Code preferences if needed" >> $GITHUB_STEP_SUMMARY
